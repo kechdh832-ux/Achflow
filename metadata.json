@@ -1,0 +1,6 @@
+{
+  "name": "VidFlow",
+  "description": "A hybrid video platform combining the best of YouTube and TikTok with AI-powered recommendations and seamless video sharing.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["Video Streaming", "Short-form Content", "AI Recommendations", "Video Editing"]
+}

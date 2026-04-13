@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "bio": { "type": "string" },
+        "followers": { "type": "array", "items": { "type": "string" } },
+        "following": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "email", "createdAt"]
+    },
+    "Video": {
+      "title": "Video",
+      "description": "Video metadata and content links",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "thumbnailUrl": { "type": "string", "format": "uri" },
+        "videoUrl": { "type": "string", "format": "uri" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string", "format": "uri" },
+        "views": { "type": "number" },
+        "likes": { "type": "array", "items": { "type": "string" } },
+        "commentsCount": { "type": "number" },
+        "type": { "type": "string", "enum": ["long", "short"] },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "number" },
+        "duration": { "type": "number" }
+      },
+      "required": ["id", "title", "thumbnailUrl", "videoUrl", "authorId", "authorName", "type", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Comments on videos",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "videoId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string", "format": "uri" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "videoId", "authorId", "authorName", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/videos/{videoId}": {
+      "schema": "Video",
+      "description": "Video metadata"
+    },
+    "/videos/{videoId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Comments on a specific video"
+    }
+  }
+}

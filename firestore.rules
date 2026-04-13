@@ -1,0 +1,160 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {userId} (matches request.auth.uid)
+// Fields:
+//   - id: string (required)
+//   - name: string (required, 1-100 chars)
+//   - email: string (required, email format)
+//   - photoURL: string (optional, URL)
+//   - bio: string (optional, 0-500 chars)
+//   - followers: list (required, strings of UIDs)
+//   - following: list (required, strings of UIDs)
+//   - createdAt: number (required)
+//
+// Collection: videos
+// Document ID: {videoId}
+// Fields:
+//   - id: string (required)
+//   - title: string (required, 1-200 chars)
+//   - description: string (required, 0-2000 chars)
+//   - thumbnailUrl: string (required, URL)
+//   - videoUrl: string (required, URL)
+//   - authorId: string (required, matches request.auth.uid)
+//   - authorName: string (required)
+//   - authorPhoto: string (optional, URL)
+//   - views: number (required, >= 0)
+//   - likes: list (required, strings of UIDs)
+//   - commentsCount: number (required, >= 0)
+//   - type: string (required, "long" | "short")
+//   - tags: list (required, strings)
+//   - createdAt: number (required)
+//   - duration: number (optional, >= 0)
+//
+// Collection: videos/{videoId}/comments
+// Document ID: {commentId}
+// Fields:
+//   - id: string (required)
+//   - videoId: string (required)
+//   - authorId: string (required, matches request.auth.uid)
+//   - authorName: string (required)
+//   - authorPhoto: string (optional, URL)
+//   - text: string (required, 1-1000 chars)
+//   - createdAt: number (required)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.authorId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['id', 'name', 'email', 'createdAt', 'followers', 'following']) &&
+             hasOnlyAllowedFields(['id', 'name', 'email', 'photoURL', 'bio', 'followers', 'following', 'createdAt']) &&
+             data.id == request.auth.uid &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             isValidEmail(data.email) &&
+             (!('photoURL' in data) || isValidUrl(data.photoURL)) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 500)) &&
+             data.followers is list &&
+             data.following is list &&
+             data.createdAt is number;
+    }
+
+    function isValidVideo(data) {
+      return hasRequiredFields(['id', 'title', 'description', 'thumbnailUrl', 'videoUrl', 'authorId', 'authorName', 'views', 'likes', 'commentsCount', 'type', 'tags', 'createdAt']) &&
+             hasOnlyAllowedFields(['id', 'title', 'description', 'thumbnailUrl', 'videoUrl', 'authorId', 'authorName', 'authorPhoto', 'views', 'likes', 'commentsCount', 'type', 'tags', 'createdAt', 'duration']) &&
+             data.authorId == request.auth.uid &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.description is string && data.description.size() <= 2000 &&
+             isValidUrl(data.thumbnailUrl) &&
+             isValidUrl(data.videoUrl) &&
+             data.type in ['long', 'short'] &&
+             data.views is number && data.views >= 0 &&
+             data.likes is list &&
+             data.commentsCount is number && data.commentsCount >= 0 &&
+             data.tags is list &&
+             data.createdAt is number;
+    }
+
+    function isValidComment(data) {
+      return hasRequiredFields(['id', 'videoId', 'authorId', 'authorName', 'text', 'createdAt']) &&
+             hasOnlyAllowedFields(['id', 'videoId', 'authorId', 'authorName', 'authorPhoto', 'text', 'createdAt']) &&
+             data.authorId == request.auth.uid &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 1000 &&
+             data.createdAt is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    match /videos/{videoId} {
+      allow read: if true; // Publicly readable
+      allow create: if isAuthenticated() && isValidVideo(request.resource.data);
+      allow update: if isAuthenticated() && (
+        // Owner can update everything except immutable fields
+        (isDocOwner() && isValidVideo(request.resource.data) && 
+         request.resource.data.authorId == resource.data.authorId &&
+         request.resource.data.createdAt == resource.data.createdAt) ||
+        // Others can only increment views or update likes
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views', 'likes', 'commentsCount']))
+      );
+      allow delete: if isDocOwner();
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isAuthenticated() && isValidComment(request.resource.data);
+        allow update: if isAuthenticated() && request.auth.uid == resource.data.authorId && 
+                        isValidComment(request.resource.data) &&
+                        request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isAuthenticated() && (request.auth.uid == resource.data.authorId || get(/databases/$(database)/documents/videos/$(videoId)).data.authorId == request.auth.uid);
+      }
+    }
+  }
+}
